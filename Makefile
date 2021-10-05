@@ -1,8 +1,12 @@
 #!make
 
+POC_NAMESPACE="dev-secrets-store-poc"
 
 ## install secret store
 install-secrets-store:
+	chmod +x .deploy/install_secret_store.sh
+	echo "Setting up namespace ${POC_NAMESAPCE}"
+	.deploy/install_secret_store.sh ${POC_NAMESPACE}
 
 ## set up vault provider
 setup-vault-provider:
