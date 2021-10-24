@@ -1,0 +1,104 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: goservice-csi-serviceaccount
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: goservice-csi-secret
+  labels:
+    k8s-app: goservice-csi
+type: Opaque
+data:
+  VAULT_SECRET: dmF1bHQtdGVzdA==
+---
+apiVersion: secrets-store.csi.x-k8s.io/v1alpha1
+kind: SecretProviderClass
+metadata:
+  name: goservice-vault-provider
+spec:
+  provider: vault
+  parameters:
+    roleName: "csi"
+    vaultAddress: "http://vault.vault:8200"
+    vaultSkipTLSVerify: "true"
+    objects:  |
+      - secretPath: "service-a/data/database"
+        objectName: "password"
+        secretKey: "password"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: goservice-csi
+  labels:
+    k8s-app: goservice-csi
+spec:
+  type: NodePort
+  ports:
+    - port: 8080
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector: 
+    k8s-app: goservice-csi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: goservice-csi
+spec:  
+  selector:
+    matchLabels:
+      k8s-app: goservice-csi
+  replicas: 1
+  template:
+    metadata:
+      labels: 
+        k8s-app: goservice-csi
+        app: goservice-csi
+    spec:
+        serviceAccountName: goservice-csi-serviceaccount
+        containers:
+        - name: goservice-csi
+          image: goservice-csi:0.0.1
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            timeoutSeconds: 5
+          resources:
+              limits:
+                  cpu: 25m
+                  memory: 32Mi
+              requests:
+                  cpu: 25m
+                  memory: 32Mi
+          env:
+            - name: VAULT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: goservice-csi-secret
+                  key: VAULT_SECRET
+          volumeMounts:
+            - name: goservice-store-inline
+              mountPath: "/mnt/secrets-store"
+              readOnly: true
+        volumes:
+          - name: goservice-store-inline
+            csi:
+              driver: secrets-store.csi.k8s.io
+              readOnly: true
+              volumeAttributes:
+                secretProviderClass: goservice-vault-provider
